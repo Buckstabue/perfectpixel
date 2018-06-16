@@ -17,22 +17,26 @@
  * along with PerfectPixel.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-const DEFAULT_ZEPLIN_SCREEN_WIDTH = 375; // in px, screen width for 100% scale
+const DEFAULT_ZEPLIN_SCREEN_WIDTH = 375; // screen width in px for 100% scale
+const ANDROID_PROJECT_ID = '59a3f72b7df7ae426850a64e';
+const IOS_PROJECT_ID = '59959a34eb8e5acbc9e8af5e';
 
-function setScaleByZeplinZoom(overlay, zeplinScale, imgWidth) {
-	let resultScale = DEFAULT_ZEPLIN_SCREEN_WIDTH;
-    if (zeplinScale) {
-    	resultScale *= zeplinScale;
+function getTargetWidth(imgWidth, zeplinScale) {
+    if (document.URL.includes(ANDROID_PROJECT_ID) || document.URL.includes(IOS_PROJECT_ID)) {
+        return zeplinScale * DEFAULT_ZEPLIN_SCREEN_WIDTH;
     }
-    overlay.set('scale', resultScale / imgWidth);
+    return imgWidth;
 }
 
+function setScaleByZeplinZoom(overlay, zeplinScale, imgWidth) {
+    overlay.set('scale', getTargetWidth(imgWidth, zeplinScale) / imgWidth);
+}
 /**
  * https://github.com/berzniz/backbone.getters.setters
  */
 Backbone.GSModel = Backbone.Model.extend({
 
-    get: function(attr) {
+    get : function(attr) {
         // Call the getter if available
         if (_.isFunction(this.getters[attr])) {
             return this.getters[attr].call(this);
@@ -41,7 +45,7 @@ Backbone.GSModel = Backbone.Model.extend({
         return Backbone.Model.prototype.get.call(this, attr);
     },
 
-    set: function(key, value, options) {
+    set : function(key, value, options) {
         var attrs, attr;
 
         // Normalize the key-value into an object
@@ -63,27 +67,27 @@ Backbone.GSModel = Backbone.Model.extend({
         return Backbone.Model.prototype.set.call(this, attrs, options);
     },
 
-    getters: {},
+    getters : {},
 
-    setters: {}
+    setters : {}
 
 });
 
 var Overlay = Backbone.GSModel.extend({
 
-    defaults: {
-        x: 0,
-        y: 0,
-        width: 300,
-        height: 300,
-        opacity: 0.5,
-        scale: 1,
-        filename: '',
-        thumbnailFilename: ''
+    defaults : {
+        x : 0,
+        y : 0,
+        width : 300,
+        height : 300,
+        opacity : 0.5,
+        scale : 1,
+        filename : '',
+        thumbnailFilename : ''
     },
 
-    setters: {
-        opacity: function(value) {
+    setters : {
+        opacity : function(value) {
             value = Number(value);
             if (value < 0) {
                 value = 0;
@@ -94,18 +98,28 @@ var Overlay = Backbone.GSModel.extend({
         }
     },
 
-    initialize: function() {
+    initialize : function() {
         this.image = new OverlayImage();
         this.image.set('parent', this);
     },
 
-    uploadFile: function(file, callback) {
+    uploadFile : function(file, callback) {
         this.image.uploadFile(file, callback);
     },
+    
+    updateImageScale : function() {
+        if (document.URL.includes('zeplin')) {
+            let imgWidth = this.image.get('width');
+            let zeplinZoom = parseInt($("#zoomDropdownLabel").text()) / 100;
+            if (zeplinZoom) {
+                setScaleByZeplinZoom(this, zeplinZoom, imgWidth);
+            }
+        }
+    },
 
-    destroy: function(options) {
+    destroy : function(options) {
         this.image.destroy({
-            success: $.proxy(function() {
+            success : $.proxy(function() {
                 Backbone.GSModel.prototype.destroy.call(this, options);
             }, this)
         });
@@ -113,263 +127,263 @@ var Overlay = Backbone.GSModel.extend({
 });
 
 var OverlayCollection = Backbone.Collection.extend({
-    model: Overlay,
-    localStorage: new Backbone.LocalStorage('perfectpixel-overlays')
+    model : Overlay,
+    localStorage : new Backbone.LocalStorage('perfectpixel-overlays')
 });
 
-var OverlayImage = Backbone.GSModel.extend({
+var OverlayImage = Backbone.GSModel
+        .extend({
 
-    // TODO for both /2, for now Canvas in Chrome scales images very bad without antialiasing, so using workaround CSS scaling
-    thumbnailMinWidth: 188,
-    thumbnailMinHeight: 120,
+            // TODO for both /2, for now Canvas in Chrome scales images very bad
+            // without antialiasing, so using workaround CSS scaling
+            thumbnailMinWidth : 188,
+            thumbnailMinHeight : 120,
 
-    getters: {
-        filename: function() {
-            return this.get('parent').get('filename');
-        },
-        thumbnailFilename: function() {
-            return this.get('parent').get('thumbnailFilename');
-        },
-        width: function() {
-            return this.get('parent').get('width');
-        },
-        height: function() {
-            return this.get('parent').get('height');
-        }
-    },
-
-    setters: {
-        filename: function(value) {
-            return this.get('parent').set('filename', value);
-        },
-        thumbnailFilename: function(value) {
-            return this.get('parent').set('thumbnailFilename', value);
-        },
-        width: function(value) {
-            return this.get('parent').set('width', value);
-        },
-        height: function(value) {
-            return this.get('parent').set('height', value);
-        }
-    },
-
-    getImageUrlAsync: function(callback) {
-        if(this.imageUrl)
-            callback(this.imageUrl);
-        else
-        {
-            this._getImageUrlByFilename(this.get('filename'), $.proxy(function(imageUrl, response) {
-                this.imageUrl = imageUrl;
-                callback(this.imageUrl);
-            }, this));
-        }
-    },
-
-    getThumbnailUrlAsync: function(callback) {
-        if(this.thumbnailImageUrl)
-            callback(this.thumbnailImageUrl);
-        else
-        {
-            this._getImageUrlByFilename(this.get('thumbnailFilename'), $.proxy(function(thumbImageUrl, response) {
-                this.thumbnailImageUrl = thumbImageUrl;
-                callback(this.thumbnailImageUrl);
-            }, this));
-        }
-    },
-
-    // Overriding getting model
-    /*sync: function(method, model, options) {
-        model._getImageUrlByFilename(this.filename, function(imageUrl, response) {
-            this.imageUrl = imageUrl;
-            var success = options.success;
-            if (success) success(model, response, options);
-            model.trigger('sync', model, response, options);
-        })
-    },*/
-
-    uploadFile: function(file, callback) {
-        // Only process image files.
-        if (!file.type.match('image.*')) {
-            alert('File must contain image');
-            callback();
-            return;
-        }
-
-        var self = this;
-        var reader = new FileReader();
-        reader.onload = function (e) {
-
-            // 1. Add full size image to storage
-            console.log("PP Add file operation");
-            ExtensionService.sendMessage(
-                {
-                    type: PP_RequestType.ADDFILE,
-                    fileData: bufferToString(e.target.result),
-                    fileName: file.name,
-                    fileType: file.type
+            getters : {
+                filename : function() {
+                    return this.get('parent').get('filename');
                 },
-                function (response) {
-                    self._handleResponse(response);
+                thumbnailFilename : function() {
+                    return this.get('parent').get('thumbnailFilename');
+                },
+                width : function() {
+                    return this.get('parent').get('width');
+                },
+                height : function() {
+                    return this.get('parent').get('height');
+                }
+            },
 
-                    if (response.status == "OK") {
+            setters : {
+                filename : function(value) {
+                    return this.get('parent').set('filename', value);
+                },
+                thumbnailFilename : function(value) {
+                    return this.get('parent').set('thumbnailFilename', value);
+                },
+                width : function(value) {
+                    return this.get('parent').set('width', value);
+                },
+                height : function(value) {
+                    return this.get('parent').set('height', value);
+                }
+            },
 
-                        var dataView = new DataView(stringToBuffer(response.arrayBuffer));
-                        var blob = new Blob([dataView],{type:response.fileType});
+            getImageUrlAsync : function(callback) {
+                if (this.imageUrl)
+                    callback(this.imageUrl);
+                else {
+                    this._getImageUrlByFilename(this.get('filename'), $.proxy(function(imageUrl, response) {
+                        this.imageUrl = imageUrl;
+                        callback(this.imageUrl);
+                    }, this));
+                }
+            },
 
-                        self.imageUrl = PPImageTools.createBlobUrl(blob);
-                        self.set('filename', response.fileName);
+            getThumbnailUrlAsync : function(callback) {
+                if (this.thumbnailImageUrl)
+                    callback(this.thumbnailImageUrl);
+                else {
+                    this._getImageUrlByFilename(this.get('thumbnailFilename'), $.proxy(
+                            function(thumbImageUrl, response) {
+                                this.thumbnailImageUrl = thumbImageUrl;
+                                callback(this.thumbnailImageUrl);
+                            }, this));
+                }
+            },
 
-                        // 2. Generate thumbnail image
-                        PPImageTools.ResizeBlob(blob, self.thumbnailMinWidth, self.thumbnailMinHeight,
-                            function(resizedBlob, img) {
-                                self.set('width', img.width);
-                                self.set('height', img.height);
-                                let zeplinZoom = $("#zoomDropdown option:checked").val();
-                                setScaleByZeplinZoom(self.get('parent'), zeplinZoom, img.width);
+            // Overriding getting model
+            /*
+             * sync: function(method, model, options) {
+             * model._getImageUrlByFilename(this.filename, function(imageUrl,
+             * response) { this.imageUrl = imageUrl; var success =
+             * options.success; if (success) success(model, response, options);
+             * model.trigger('sync', model, response, options); }) },
+             */
 
-                                PPImageTools.getArrayBufferFromBlob(resizedBlob, function(resizedBlobBuffer) {
+            uploadFile : function(file, callback) {
+                // Only process image files.
+                if (!file.type.match('image.*')) {
+                    alert('File must contain image');
+                    callback();
+                    return;
+                }
 
-                                    // 3. Add thumbnail image to storage
-                                    console.log("PP Add file operation - thumbnail");
-                                    ExtensionService.sendMessage(
-                                        {
-                                            type: PP_RequestType.ADDFILE,
-                                            fileData: bufferToString(resizedBlobBuffer),
-                                            fileName: file.name,
-                                            fileType: resizedBlob.type
-                                        },
-                                        function (responseThumb) {
-                                            self._handleResponse(responseThumb);
+                var self = this;
+                var reader = new FileReader();
+                reader.onload = function(e) {
 
-                                            if (responseThumb.status == "OK") {
-                                                var dataViewThumb = new DataView(stringToBuffer(responseThumb.arrayBuffer));
-                                                var blobThumb = new Blob([dataViewThumb],{type:responseThumb.fileType});
+                    // 1. Add full size image to storage
+                    console.log("PP Add file operation");
+                    ExtensionService.sendMessage({
+                        type : PP_RequestType.ADDFILE,
+                        fileData : bufferToString(e.target.result),
+                        fileName : file.name,
+                        fileType : file.type
+                    }, function(response) {
+                        self._handleResponse(response);
 
-                                                self.thumbnailUrl = PPImageTools.createBlobUrl(blobThumb);
-                                                self.set('thumbnailFilename', responseThumb.fileName);
+                        if (response.status == "OK") {
 
-                                                callback();
-                                            }
+                            var dataView = new DataView(stringToBuffer(response.arrayBuffer));
+                            var blob = new Blob([ dataView ], {
+                                type : response.fileType
+                            });
+
+                            self.imageUrl = PPImageTools.createBlobUrl(blob);
+                            self.set('filename', response.fileName);
+
+                            // 2. Generate thumbnail image
+                            PPImageTools.ResizeBlob(blob, self.thumbnailMinWidth, self.thumbnailMinHeight,
+                                    function(resizedBlob, img) {
+                                        self.set('width', img.width);
+                                        self.set('height', img.height);
+                                        self.get('parent').updateImageScale()
+
+                                        PPImageTools.getArrayBufferFromBlob(resizedBlob, function(resizedBlobBuffer) {
+
+                                            // 3. Add thumbnail image to storage
+                                            console.log("PP Add file operation - thumbnail");
+                                            ExtensionService.sendMessage({
+                                                type : PP_RequestType.ADDFILE,
+                                                fileData : bufferToString(resizedBlobBuffer),
+                                                fileName : file.name,
+                                                fileType : resizedBlob.type
+                                            }, function(responseThumb) {
+                                                self._handleResponse(responseThumb);
+
+                                                if (responseThumb.status == "OK") {
+                                                    var dataViewThumb = new DataView(
+                                                            stringToBuffer(responseThumb.arrayBuffer));
+                                                    var blobThumb = new Blob([ dataViewThumb ], {
+                                                        type : responseThumb.fileType
+                                                    });
+
+                                                    self.thumbnailUrl = PPImageTools.createBlobUrl(blobThumb);
+                                                    self.set('thumbnailFilename', responseThumb.fileName);
+
+                                                    callback();
+                                                }
+                                            });
                                         });
-                                });
-                            }
-                        );
+                                    });
+                        } else
+                            callback();
+                    });
+                }
+                reader.onerror = function(stuff) {
+                    console.log("PP error", stuff);
+
+                    if (stuff.getMessage) {
+                        console.log(stuff.getMessage());
+                    } else {
+                        // it might be the local file secutiry error.
+                        // See
+                        // http://stackoverflow.com/questions/6665457/updateusing-filereader-in-chrome
+                        if (stuff.type == 'error' && document.location.protocol == 'file:')
+                            alert('It looks like you are trying to use the extension on a local html page. Unfortunately, due to security reasons, Chrome doesn\'t allow scripts to access the local files from the local pages unless you start the browser with --allow-file-access-from-files flag.');
                     }
-                    else
-                        callback();
-                });
-        }
-        reader.onerror = function (stuff) {
-            console.log("PP error", stuff);
 
-            if (stuff.getMessage) {
-                console.log(stuff.getMessage());
-            }
-            else {
-                // it might be the local file secutiry error.
-                // See http://stackoverflow.com/questions/6665457/updateusing-filereader-in-chrome
-                if (stuff.type == 'error' && document.location.protocol == 'file:')
-                    alert('It looks like you are trying to use the extension on a local html page. Unfortunately, due to security reasons, Chrome doesn\'t allow scripts to access the local files from the local pages unless you start the browser with --allow-file-access-from-files flag.');
-            }
+                    callback();
+                }
+                reader.readAsArrayBuffer(file);
+            },
 
-            callback();
-        }
-        reader.readAsArrayBuffer(file);
-    },
+            /**
+             * Load image from underlying data source by filename
+             * 
+             * @param filename
+             * @param [callback]
+             * @private
+             */
+            _getImageUrlByFilename : function(filename, callback) {
+                if (filename) {
+                    console.time("PP Profiling _getImageUrlByFilename " + filename);
+                    var self = this;
+                    ExtensionService.sendMessage({
+                        type : PP_RequestType.GETFILE,
+                        fileName : filename
+                    }, function(response) {
+                        self._handleResponse(response);
+                        if (response.status == "OK") {
+                            var dataView = new DataView(stringToBuffer(response.arrayBuffer));
+                            var blob = new Blob([ dataView ], {
+                                type : response.fileType
+                            });
+                            var imageUrl = PPImageTools.createBlobUrl(blob);
+                        }
+                        console.timeEnd("PP Profiling _getImageUrlByFilename " + filename);
 
-    /**
-     * Load image from underlying data source by filename
-     * @param filename
-     * @param [callback]
-     * @private
-     */
-    _getImageUrlByFilename: function(filename, callback) {
-        if (filename) {
-            console.time("PP Profiling _getImageUrlByFilename " + filename);
-            var self = this;
-            ExtensionService.sendMessage({
-                    type: PP_RequestType.GETFILE,
-                    fileName: filename
-                },
-                function (response) {
-                    self._handleResponse(response);
+                        callback && callback(imageUrl, response);
+                    });
+                } else {
+                    console.error("Attempt to get image url for empty filename");
+                    callback && callback(null);
+                }
+            },
+
+            /**
+             * Handle response came from background page file manager
+             * 
+             * @param response
+             * @private
+             */
+            _handleResponse : function(response) {
+                console.log("PP " + response.status);
+                if (response.message && response.showToUser) {
+                    alert(response.message);
+                }
+            },
+
+            /**
+             * Desctructor. Delete image from underlying data source.
+             */
+            destroy : function(options) {
+                // Delete physical files
+                var filesToDelete = [ this.get('filename') ];
+                if (this.get('thumbnailFilename'))
+                    filesToDelete.push(this.get('thumbnailFilename'));
+
+                console.log("PP Delete files operation " + filesToDelete.toString());
+
+                ExtensionService.sendMessage({
+                    type : PP_RequestType.DELETEFILE,
+                    fileName : filesToDelete
+                }, $.proxy(function(response) {
+                    this._handleResponse(response);
+
                     if (response.status == "OK") {
-                        var dataView = new DataView(stringToBuffer(response.arrayBuffer));
-                        var blob = new Blob([dataView],{type:response.fileType});
-                        var imageUrl = PPImageTools.createBlobUrl(blob);
+                        PPImageTools.revokeBlobUrl(this.imageUrl);
+                        PPImageTools.revokeBlobUrl(this.thumbnailImageUrl);
+
+                        options.success && options.success(response);
                     }
-                    console.timeEnd("PP Profiling _getImageUrlByFilename " + filename);
 
-                    callback && callback(imageUrl, response);
-                });
-        } else {
-            console.error("Attempt to get image url for empty filename");
-            callback && callback(null);
-        }
-    },
+                    options.error && options.error(response);
 
-    /**
-     * Handle response came from background page file manager
-     * @param response
-     * @private
-     */
-    _handleResponse: function(response) {
-        console.log("PP " + response.status);
-        if (response.message && response.showToUser) {
-            alert(response.message);
-        }
-    },
-
-    /**
-     * Desctructor. Delete image from underlying data source.
-     */
-    destroy: function(options) {
-        // Delete physical files
-        var filesToDelete = [this.get('filename')];
-        if(this.get('thumbnailFilename'))
-            filesToDelete.push(this.get('thumbnailFilename'));
-
-        console.log("PP Delete files operation " + filesToDelete.toString());
-
-        ExtensionService.sendMessage(
-        {
-            type: PP_RequestType.DELETEFILE,
-            fileName: filesToDelete
-        },
-        $.proxy(function (response) {
-            this._handleResponse(response);
-
-            if (response.status == "OK") {
-                PPImageTools.revokeBlobUrl(this.imageUrl);
-                PPImageTools.revokeBlobUrl(this.thumbnailImageUrl);
-
-                options.success && options.success(response);
+                }, this));
             }
-
-            options.error && options.error(response);
-
-        }, this));
-    }
-});
+        });
 
 var PerfectPixelModel = Backbone.Model.extend({
-    defaults: {
-        currentOverlayId: null,
-        overlayShown: false,
-        overlayLocked: false,
-        overlayInverted: false,
-        version: 0 // Version is always set by Converter class
+    defaults : {
+        currentOverlayId : null,
+        overlayShown : false,
+        overlayLocked : false,
+        overlayInverted : false,
+        version : 0
+    // Version is always set by Converter class
     },
 
-    localStorage: new Backbone.LocalStorage('perfectpixel'),
+    localStorage : new Backbone.LocalStorage('perfectpixel'),
 
-    initialize: function() {
+    initialize : function() {
         this.overlays = new OverlayCollection();
         this.overlays.bind('remove', this.overlayRemoved, this);
         this.notificationModel = new NotificationModel();
     },
 
-    getCurrentOverlay: function() {
+    getCurrentOverlay : function() {
         if (this.has('currentOverlayId')) {
             return this.overlays.get(this.get('currentOverlayId'));
         } else {
@@ -377,90 +391,117 @@ var PerfectPixelModel = Backbone.Model.extend({
         }
     },
 
-    setCurrentOverlay: function(overlay) {
-        this.save({currentOverlayId: overlay.id});
+    setCurrentOverlay : function(overlay) {
+        this.save({
+            currentOverlayId : overlay.id
+        });
     },
 
-    isOverlayCurrent: function(overlay) {
+    isOverlayCurrent : function(overlay) {
         return this.get('currentOverlayId') === overlay.id
     },
 
-    isOverlayLocked: function() {
+    isOverlayLocked : function() {
         return this.get('overlayLocked')
     },
 
-    moveCurrentOverlay: function(props) {
+    moveCurrentOverlay : function(props) {
         var overlay = this.getCurrentOverlay();
         if (overlay) {
-            if (ExtOptions.allowPositionChangeWhenLocked ||
-                (this.get('overlayShown') && !this.get('overlayLocked'))) {
+            if (ExtOptions.allowPositionChangeWhenLocked || (this.get('overlayShown') && !this.get('overlayLocked'))) {
                 overlay.save(props);
             }
-            return {x: overlay.get('x'), y: overlay.get('y')};
+            return {
+                x : overlay.get('x'),
+                y : overlay.get('y')
+            };
         }
-        return {x: null, y: null};
+        return {
+            x : null,
+            y : null
+        };
     },
 
-    scaleCurrentOverlay: function(props) {
+    scaleCurrentOverlay : function(props) {
         var overlay = this.getCurrentOverlay();
         if (overlay) {
-            if (ExtOptions.allowPositionChangeWhenLocked ||
-                (this.get('overlayShown') && !this.get('overlayLocked'))) {
+            if (ExtOptions.allowPositionChangeWhenLocked || (this.get('overlayShown') && !this.get('overlayLocked'))) {
                 overlay.save(props);
             }
-            return {scale: overlay.get('scale')};
+            return {
+                scale : overlay.get('scale')
+            };
         }
-        return {scale: null};
+        return {
+            scale : null
+        };
     },
 
-    changeCurrentOverlayOpacity: function(props) {
+    changeCurrentOverlayOpacity : function(props) {
         var overlay = this.getCurrentOverlay();
         if (overlay) {
-            if (ExtOptions.allowPositionChangeWhenLocked ||
-                (this.get('overlayShown') && !this.get('overlayLocked'))) {
+            if (ExtOptions.allowPositionChangeWhenLocked || (this.get('overlayShown') && !this.get('overlayLocked'))) {
                 overlay.save(props);
             }
-            return {opacity: overlay.get('opacity')};
+            return {
+                opacity : overlay.get('opacity')
+            };
         }
-        return {opacity: null};
+        return {
+            opacity : null
+        };
     },
 
-    toggleOverlayShown: function() {
-        this.save({overlayShown: !this.get('overlayShown')});
+    toggleOverlayShown : function() {
+        this.save({
+            overlayShown : !this.get('overlayShown')
+        });
     },
 
-    showOverlay: function() {
-        this.save({overlayShown: true});
+    showOverlay : function() {
+        this.save({
+            overlayShown : true
+        });
     },
 
-    toggleOverlayLocked: function() {
-        this.save({overlayLocked: !this.get('overlayLocked')});
+    toggleOverlayLocked : function() {
+        this.save({
+            overlayLocked : !this.get('overlayLocked')
+        });
     },
 
-    unlockOverlay: function() {
-        this.save({overlayLocked: false});
+    unlockOverlay : function() {
+        this.save({
+            overlayLocked : false
+        });
     },
 
-    toggleOverlayInverted: function() {
-        this.save({overlayInverted: !this.get('overlayInverted')});
+    toggleOverlayInverted : function() {
+        this.save({
+            overlayInverted : !this.get('overlayInverted')
+        });
     },
 
-    overlayRemoved: function(overlay) {
+    overlayRemoved : function(overlay) {
         if (overlay.id === this.get('currentOverlayId')) {
             var firstOverlay = this.overlays.first();
             if (firstOverlay) {
-                this.save({currentOverlayId: firstOverlay.id});
+                this.save({
+                    currentOverlayId : firstOverlay.id
+                });
             } else {
-                this.save({currentOverlayId: null});
+                this.save({
+                    currentOverlayId : null
+                });
             }
         }
     },
 
-    getDefaultLocale: function() {
+    getDefaultLocale : function() {
         return ExtOptions.defaultLocale;
     },
 
-    getCurrentLocale: function() {
+    getCurrentLocale : function() {
         // Return only global locale: "en" instead of "en-US"
         var regex = /(.*)-.*/i
         var matchArray = regex.exec(window.navigator.language);
@@ -469,49 +510,48 @@ var PerfectPixelModel = Backbone.Model.extend({
         else
             return window.navigator.language;
     }
- });
+});
 
 /**
  * Notification Model
+ * 
  * @type {*}
  */
 var Notification = Backbone.GSModel.extend({
 
-    defaults: {
-        id: 0,
-        show: 0,
-        text:  'default text',
-        minVersion: 0,
-        maxVersion: 0,
-        expireDate: '10.10.2010'
+    defaults : {
+        id : 0,
+        show : 0,
+        text : 'default text',
+        minVersion : 0,
+        maxVersion : 0,
+        expireDate : '10.10.2010'
     },
 
-    initialize: function() {
+    initialize : function() {
 
     },
 
-    getText: function() {
+    getText : function() {
         var locale = PerfectPixel.getCurrentLocale();
         var val = this.get('text_' + locale);
-        if(!val)
+        if (!val)
             val = this.get('text_' + PerfectPixel.getDefaultLocale());
         return val;
     },
 
-    checkParam: function(version, maxid) {
+    checkParam : function(version, maxid) {
         var result = true;
-        var now = new Date(),
-            expireDate = new Date(this.get("expireDate")),
-            defaultDate = this.defaults.expireDate;
+        var now = new Date(), expireDate = new Date(this.get("expireDate")), defaultDate = this.defaults.expireDate;
 
         if (this.get('show') != 1)
             return false;
 
-        if (this.get("minVersion") > version && this.get("minVersion") != 0){
+        if (this.get("minVersion") > version && this.get("minVersion") != 0) {
             result = false;
         }
 
-        if (this.get("maxVersion") < version && this.get("maxVersion") !=0 ){
+        if (this.get("maxVersion") < version && this.get("maxVersion") != 0) {
             result = false;
         }
 
@@ -524,103 +564,103 @@ var Notification = Backbone.GSModel.extend({
         return result;
     },
 
-    destroy: function(options) {
+    destroy : function(options) {
 
     }
 });
 
 /**
  * Notifications collection
+ * 
  * @type {*}
  */
 var NotificationCollection = Backbone.Collection.extend({
-    defaults: {
-        model: Notification
+    defaults : {
+        model : Notification
     },
-    model: Notification,
-    url: function() {
-        return "https://s3-eu-west-1.amazonaws.com/www.welldonecode.com/perfectpixel/data/notifications.json?random=" + Math.random();
+    model : Notification,
+    url : function() {
+        return "https://s3-eu-west-1.amazonaws.com/www.welldonecode.com/perfectpixel/data/notifications.json?random="
+                + Math.random();
     }
 });
 
 /**
  * Model for working with NotificationCollection
+ * 
  * @type {*}
  */
-var NotificationModel = Backbone.Model.extend({
+var NotificationModel = Backbone.Model
+        .extend({
 
-    defaults: {
-        collectionNotifications: new NotificationCollection(),
-        currentNotification: new Notification(),
-        maxId:0
-    },
+            defaults : {
+                collectionNotifications : new NotificationCollection(),
+                currentNotification : new Notification(),
+                maxId : 0
+            },
 
-    initialize: function() {
-        var that = this;
-        var allNotificationsFromRemote = new NotificationCollection();
-        allNotificationsFromRemote.fetch({
-            success: $.proxy(function(result) {
-                ExtensionService.sendMessage(
-                    {
-                        type: PP_RequestType.GetNotifications,
-                        keyName:'perfectpixel-notification'
-                    },
-                    $.proxy(function(response)
-                    {
-                        var maxid = 0;
-                        if (response){
-                            maxid = response;
-                        }
-                        that.setMaxId(maxid);
-                        that.setCollection(allNotificationsFromRemote);
+            initialize : function() {
+                var that = this;
+                var allNotificationsFromRemote = new NotificationCollection();
+                allNotificationsFromRemote.fetch({
+                    success : $.proxy(function(result) {
+                        ExtensionService.sendMessage({
+                            type : PP_RequestType.GetNotifications,
+                            keyName : 'perfectpixel-notification'
+                        }, $.proxy(function(response) {
+                            var maxid = 0;
+                            if (response) {
+                                maxid = response;
+                            }
+                            that.setMaxId(maxid);
+                            that.setCollection(allNotificationsFromRemote);
+                        }, this));
                     }, this)
-                );
-            }
-            , this)});
-    },
+                });
+            },
 
-    setCollection: function(collection){
-        var collectionResult = new NotificationCollection,
-            version = Converter._getCurrentExtensionVersion(),
-            maxid = this.get("maxId");
+            setCollection : function(collection) {
+                var collectionResult = new NotificationCollection, version = Converter._getCurrentExtensionVersion(), maxid = this
+                        .get("maxId");
 
-        collection.each( function( notify){
-            var check = notify.checkParam(version, maxid);
-            if (check){
-                collectionResult.add(notify);
+                collection.each(function(notify) {
+                    var check = notify.checkParam(version, maxid);
+                    if (check) {
+                        collectionResult.add(notify);
+                    }
+                });
+                this.collectionNotifications = collectionResult;
+                this.setCurrentNotification();
+            },
+
+            getCurrentNotification : function() {
+                return this.currentNotification;
+            },
+
+            setCurrentNotification : function() {
+                if (this.collectionNotifications.length > 0) {
+                    this.currentNotification = this.collectionNotifications.shift();
+                } else {
+                    this.currentNotification = null;
+                }
+                this.trigger("change:currentNotification");
+            },
+
+            closeCurrentNotification : function() {
+                var notify = this.getCurrentNotification();
+                ExtensionService.sendMessage({
+                    type : PP_RequestType.SetNotifications,
+                    notifyId : notify.get("id"),
+                    keyName : 'perfectpixel-notification'
+                });
+                this.set("maxId", notify.get("id"));
+                // Don't need to care about changing current notification
+                // New notification is changed with
+                // PP_Background_RequestType.NotificationsUpdated request from
+                // backround page
+            },
+
+            setMaxId : function(maxid) {
+                this.set("maxId", maxid);
             }
         });
-        this.collectionNotifications = collectionResult;
-        this.setCurrentNotification();
-    },
-
-    getCurrentNotification: function(){
-        return this.currentNotification;
-    },
-
-    setCurrentNotification: function() {
-        if (this.collectionNotifications.length > 0) {
-            this.currentNotification = this.collectionNotifications.shift();
-        } else {
-            this.currentNotification = null;
-        }
-        this.trigger("change:currentNotification");
-    },
-
-    closeCurrentNotification: function() {
-        var notify = this.getCurrentNotification();
-        ExtensionService.sendMessage(
-            {
-                type: PP_RequestType.SetNotifications,
-                notifyId: notify.get("id"),
-                keyName:'perfectpixel-notification'
-            });
-        this.set("maxId", notify.get("id"));
-        // Don't need to care about changing current notification
-        // New notification is changed with PP_Background_RequestType.NotificationsUpdated request from backround page
-    },
-
-    setMaxId: function(maxid) {
-        this.set("maxId", maxid);
-    }
-});

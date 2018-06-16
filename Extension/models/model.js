@@ -17,6 +17,16 @@
  * along with PerfectPixel.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+const DEFAULT_ZEPLIN_SCREEN_WIDTH = 375; // in px, screen width for 100% scale
+
+function setScaleByZeplinZoom(overlay, zeplinScale, imgWidth) {
+	let resultScale = DEFAULT_ZEPLIN_SCREEN_WIDTH;
+    if (zeplinScale) {
+    	resultScale *= zeplinScale;
+    }
+    overlay.set('scale', resultScale / imgWidth);
+}
+
 /**
  * https://github.com/berzniz/backbone.getters.setters
  */
@@ -214,6 +224,8 @@ var OverlayImage = Backbone.GSModel.extend({
                             function(resizedBlob, img) {
                                 self.set('width', img.width);
                                 self.set('height', img.height);
+                                let zeplinZoom = $("#zoomDropdown option:checked").val();
+                                setScaleByZeplinZoom(self.get('parent'), zeplinZoom, img.width);
 
                                 PPImageTools.getArrayBufferFromBlob(resizedBlob, function(resizedBlobBuffer) {
 

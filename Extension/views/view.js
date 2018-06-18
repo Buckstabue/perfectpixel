@@ -56,6 +56,7 @@ var PanelView = Backbone.View
                 PerfectPixel.overlays.bind('reset', this.reloadOverlays);
                 PerfectPixel.notificationModel.on('change:currentNotification', this.updateNotification);
 
+                // zeplin stuff
                 let zoomElement = document.getElementById('zoomDropdownLabel');
                 if (zoomElement) {
                     let mutationConfig = {
@@ -71,6 +72,18 @@ var PanelView = Backbone.View
                     let mutationObserver = new MutationObserver(callback);
                     mutationObserver.observe(zoomElement, mutationConfig);
                     callback()
+
+                    let lastScrollPosition = $("#screenView").scrollTop();
+                    console.log(`scrollOffset = ${lastScrollPosition}`)
+                    $("#screenView").scroll(function() {
+                        let newScrollPosition = $("#screenView").scrollTop();
+                        let scrollOffset = newScrollPosition - lastScrollPosition;
+                        console.log(`scrollOffset = ${scrollOffset}`)
+                        PerfectPixel.overlays.each(function(overlay) {
+                            overlay.set('y', overlay.get('y') - scrollOffset);
+                        });
+                        lastScrollPosition = newScrollPosition;
+                    });
                 }
 
                 var view = this;
